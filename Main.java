@@ -1,11 +1,3 @@
-/**
- * Clase principal del sistema de gestión de inventarios.
- * Proporciona un menú interactivo en consola para las operaciones principales.
- * Integra patrones: Singleton (Inventario), Factory Method (ProductoFactory), Prototype (clonación).
- * 
- * @author Geronimo Lugo Oviedo, Néstor González Flórez, Julio Eduardo Durán
- * @version 2.0 - Nueva versión alineada a requerimientos (13/09/2025)
- */
 import utils.EntradaUsuario;
 
 public class Main {
@@ -14,6 +6,11 @@ public class Main {
      */
     public static void main(String[] args) {
         Inventario inventario = Inventario.getInstancia();
+        GestorComandos gestorComandos = new GestorComandos(); // Para Command
+
+        // Registrar observador (Observer)
+        Observador observadorConsola = new ObservadorConsola();
+        inventario.registrarObservador(observadorConsola);
 
         while (true) {
             System.out.println("\n--- MENÚ PRINCIPAL ---");
@@ -23,9 +20,9 @@ public class Main {
             System.out.println("4. Consultar inventario");
             System.out.println("5. Actualizar inventario");
             System.out.println("6. Salir");
+            System.out.println("7. Deshacer última operación");
 
             int opcion = EntradaUsuario.leerNumero("Seleccione una opción: ");
-
             switch (opcion) {
                 case 1:
                     crearCategoria(inventario);
@@ -40,11 +37,14 @@ public class Main {
                     inventario.mostrarInventario();
                     break;
                 case 5:
-                    actualizarInventario(inventario);
+                    actualizarInventario(inventario, gestorComandos);
                     break;
                 case 6:
                     System.out.println("¡Hasta luego!");
                     return;
+                case 7:
+                    gestorComandos.deshacerUltimo();
+                    break;
                 default:
                     System.out.println("Opción inválida.");
                     break;
@@ -54,9 +54,6 @@ public class Main {
 
     /**
      * Crea una nueva categoría con atributos personalizados y la persiste en el inventario.
-     * Cumple con Caso de Uso 1: Crear una categoría de productos.
-     * 
-     * @param inventario La instancia Singleton del inventario.
      */
     private static void crearCategoria(Inventario inventario) {
         String nombre = EntradaUsuario.leerTexto("Nombre de la categoría: ");
@@ -82,16 +79,25 @@ public class Main {
             categoria.agregarAtributo(clave, valor);
         }
 
-        inventario.agregarCategoria(categoria);
+        // Opción para agregar a una categoría padre (Composite)
+        String nombrePadre = EntradaUsuario.leerTexto("¿Agregar a una categoría padre? (deje vacío si no): ");
+        if (!nombrePadre.trim().isEmpty()) {
+            ComponenteInventario padre = inventario.buscarComponente(nombrePadre);
+            if (padre instanceof Categoria) {
+                ((Categoria) padre).agregarHijo(categoria);
+                System.out.println("Categoría agregada como subcategoría.");
+            } else {
+                System.out.println("Categoría padre no encontrada o no es una categoría.");
+                return;
+            }
+        } else {
+            inventario.agregarComponente(categoria);
+        }
         System.out.println("Categoría creada y persistida:\n" + categoria);
     }
 
     /**
      * Crea un nuevo producto usando Factory Method, asignado a una categoría existente.
-     * Si la categoría no existe, crea una temporal (recomendación: use opción 1 primero).
-     * Cumple con Caso de Uso: Gestión de Productos.
-     * 
-     * @param inventario La instancia Singleton del inventario.
      */
     private static void crearProducto(Inventario inventario) {
         String nombreCategoria = EntradaUsuario.leerTexto("Ingrese el nombre de la categoría: ");
@@ -99,11 +105,14 @@ public class Main {
             System.out.println("El nombre de la categoría no puede estar vacío.");
             return;
         }
-        Categoria categoria = inventario.buscarCategoria(nombreCategoria);
-
-        if (categoria == null) {
+        ComponenteInventario componente = inventario.buscarComponente(nombreCategoria);
+        Categoria categoria;
+        if (componente instanceof Categoria) {
+            categoria = (Categoria) componente;
+        } else {
             System.out.println("Categoría no encontrada. Creando temporal...");
             categoria = new Categoria(nombreCategoria, "Categoría temporal creada automáticamente.");
+            inventario.agregarComponente(categoria);
         }
 
         String nombre = EntradaUsuario.leerTexto("Nombre del producto: ");
@@ -122,18 +131,27 @@ public class Main {
             return;
         }
 
-        // Uso de Factory Method para creación encapsulada
+        // Factory
         Producto producto = ProductoFactory.crearProducto(nombre, precio, cantidad, categoria);
 
-        inventario.agregarProducto(producto);
+        // Decorator opcional
+        String aplicarDescuento = EntradaUsuario.leerTexto("¿Aplicar descuento? (s/n): ");
+        if (aplicarDescuento.equalsIgnoreCase("s")) {
+            double porcentaje = EntradaUsuario.leerDecimal("Porcentaje de descuento (0-1): ");
+            if (porcentaje < 0 || porcentaje > 1) {
+                System.out.println("Porcentaje inválido.");
+            } else {
+                producto = new ProductoConDescuento(producto, porcentaje);
+            }
+        }
+
+        categoria.agregarHijo(producto); // Composite
+        Inventario.getInstancia().notificarObservadores("Producto agregado: " + producto.getNombre());
         System.out.println("Producto creado:\n" + producto);
     }
 
     /**
      * Clona un producto existente usando Prototype y Clonador.
-     * Cumple con Caso de Uso 2: Clonar un producto existente.
-     * 
-     * @param inventario La instancia Singleton del inventario.
      */
     private static void clonarProducto(Inventario inventario) {
         String nombreOriginal = EntradaUsuario.leerTexto("Nombre del producto a clonar: ");
@@ -141,40 +159,65 @@ public class Main {
             System.out.println("El nombre no puede estar vacío.");
             return;
         }
-        Producto original = inventario.buscarProducto(nombreOriginal);
+        ComponenteInventario componente = inventario.buscarComponente(nombreOriginal);
+        if (componente instanceof Producto) {
+            Producto original = (Producto) componente;
 
-        if (original != null) {
-            // Uso de Prototype vía Clonador
+            // Prototype
             Producto copia = ClonadorProducto.clonarProducto(original);
-            inventario.agregarProducto(copia);
-            System.out.println("Producto clonado:\n" + copia);
+
+            // Decorator opcional
+            String aplicarDescuento = EntradaUsuario.leerTexto("¿Aplicar descuento al clon? (s/n): ");
+            if (aplicarDescuento.equalsIgnoreCase("s")) {
+                double porcentaje = EntradaUsuario.leerDecimal("Porcentaje de descuento (0-1): ");
+                if (porcentaje < 0 || porcentaje > 1) {
+                    System.out.println("Porcentaje inválido.");
+                } else {
+                    copia = new ProductoConDescuento(copia, porcentaje);
+                }
+            }
+
+            // Agregar a la misma categoría
+            Categoria categoria = original.getCategoria();
+            if (categoria != null) {
+                categoria.agregarHijo(copia);
+                inventario.notificarObservadores("Producto clonado: " + copia.getNombre());
+                System.out.println("Producto clonado:\n" + copia);
+            } else {
+                System.out.println("Categoría no encontrada para el original.");
+            }
         } else {
             System.out.println("Producto no encontrado.");
         }
     }
 
     /**
-     * Actualiza la cantidad de un producto (añadir o retirar).
-     * Previene stock negativo. Cumple con Caso de Uso 4: Registrar salida de productos.
-     * 
-     * @param inventario La instancia Singleton del inventario.
+     * Actualiza la cantidad de un producto (añadir o retirar) usando Command.
      */
-    private static void actualizarInventario(Inventario inventario) {
+    private static void actualizarInventario(Inventario inventario, GestorComandos gestorComandos) {
         String nombre = EntradaUsuario.leerTexto("Nombre del producto: ");
         if (nombre.trim().isEmpty()) {
             System.out.println("El nombre no puede estar vacío.");
             return;
         }
-        Producto producto = inventario.buscarProducto(nombre);
-
-        if (producto != null) {
+        ComponenteInventario componente = inventario.buscarComponente(nombre);
+        if (componente instanceof Producto) {
+            Producto producto = (Producto) componente;
             int cantidad = EntradaUsuario.leerNumero("Cantidad a añadir (+) o retirar (-): ");
+
+            Comando comando;
             if (cantidad >= 0) {
-                producto.setCantidad(producto.getCantidad() + cantidad);
+                comando = new ComandoAgregarCantidad(producto, cantidad);
             } else {
-                inventario.retirarProducto(nombre, -cantidad);
+                comando = new ComandoRetirarCantidad(producto, -cantidad);
             }
-            System.out.println("Inventario actualizado:\n" + producto);
+
+            if (gestorComandos.ejecutarComando(comando)) {
+                inventario.notificarObservadores("Inventario actualizado para: " + producto.getNombre());
+                System.out.println("Inventario actualizado:\n" + producto);
+            } else {
+                System.out.println("No se pudo ejecutar el comando (verifique existencias).");
+            }
         } else {
             System.out.println("Producto no encontrado.");
         }

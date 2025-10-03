@@ -1,45 +1,39 @@
-import java.util.HashMap;
-import java.util.Map;
+import java.util.*;
 
-/**
- * Representa una categoría de productos con atributos personalizados.
- * 
- * @author Geronimo Lugo Oviedo, Néstor González Flórez, Julio Eduardo Durán
- * @version 2.0
- */
-public class Categoria {
-    private String nombre;
-    private String descripcion;
-    private Map<String, String> atributos;
+public class Categoria extends ComponenteInventario {
+    private final String descripcion;
+    private final Map<String, String> atributos = new LinkedHashMap<>();
+    private final List<ComponenteInventario> hijos = new ArrayList<>();
 
-    /**
-     * Constructor de categoría.
-     * @param nombre Nombre de la categoría.
-     * @param descripcion Descripción de la categoría.
-     */
     public Categoria(String nombre, String descripcion) {
-        this.nombre = nombre;
+        super(nombre);
         this.descripcion = descripcion;
-        this.atributos = new HashMap<>();
     }
 
-    public String getNombre() { return nombre; }
-    public String getDescripcion() { return descripcion; }
-    public Map<String, String> getAtributos() { return atributos; }
-
-    /**
-     * Agrega un atributo a la categoría.
-     * @param clave Nombre del atributo.
-     * @param valor Valor del atributo.
-     */
     public void agregarAtributo(String clave, String valor) {
         atributos.put(clave, valor);
     }
 
+    public void agregarHijo(ComponenteInventario hijo) {
+        hijos.add(hijo);
+        if (hijo instanceof Producto) {
+            ((Producto) hijo).setCategoria(this);
+        } else if (hijo instanceof ProductoConDescuento) {
+            ((ProductoConDescuento) hijo).setCategoria(this);
+        }
+    }
+
+    public List<ComponenteInventario> getHijos() {
+        return Collections.unmodifiableList(hijos);
+    }
+
+    @Override
+    public String descripcion() {
+        return "Categoría: " + nombre + " (" + descripcion + "), atributos=" + atributos;
+    }
+
     @Override
     public String toString() {
-        return "Categoría: " + nombre + 
-               "\nDescripción: " + descripcion + 
-               "\nAtributos: " + atributos;
+        return descripcion();
     }
 }

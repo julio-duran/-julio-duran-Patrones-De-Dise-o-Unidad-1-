@@ -1,114 +1,67 @@
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
-/**
- * Clase Singleton para la gestión centralizada del inventario.
- * Mantiene listas de productos y categorías. Aplica patrón Singleton para única instancia.
- * 
- * @author Geronimo Lugo Oviedo, Néstor González Flórez, Julio Eduardo Durán
- * @version 2.0
- */
 public class Inventario {
-    private static Inventario instancia;
-    private List<Producto> productos;
-    private List<Categoria> categorias;
+    private static final Inventario INSTANCIA = new Inventario();
 
-    /**
-     * Constructor privado para Singleton.
-     */
-    private Inventario() {
-        productos = new ArrayList<>();
-        categorias = new ArrayList<>();
-    }
+    private final List<ComponenteInventario> raices = new ArrayList<>();
+    private final List<Observador> observadores = new ArrayList<>();
 
-    /**
-     * Obtiene la única instancia (thread-safe en Java 21+).
-     * @return Instancia única del inventario.
-     */
+    private Inventario() {}
+
     public static Inventario getInstancia() {
-        if (instancia == null) {
-            synchronized (Inventario.class) {
-                if (instancia == null) {
-                    instancia = new Inventario();
-                }
-            }
+        return INSTANCIA;
+    }
+
+    public void agregarComponente(ComponenteInventario c) {
+        raices.add(c);
+    }
+
+    public void registrarObservador(Observador o) {
+        observadores.add(o);
+    }
+
+    public void notificarObservadores(String mensaje) {
+        for (Observador o : observadores) {
+            o.actualizar(mensaje);
         }
-        return instancia;
     }
 
-    /**
-     * Agrega un producto al inventario.
-     * @param producto Producto a agregar.
-     */
-    public void agregarProducto(Producto producto) {
-        productos.add(producto);
+    /** Búsqueda por nombre en todo el árbol (categorías y productos) */
+    public ComponenteInventario buscarComponente(String nombre) {
+        for (ComponenteInventario c : raices) {
+            ComponenteInventario res = buscarRec(c, nombre);
+            if (res != null) return res;
+        }
+        return null;
     }
 
-    /**
-     * Busca un producto por nombre (case-insensitive).
-     * @param nombre Nombre del producto.
-     * @return Producto encontrado o null si no existe.
-     */
-    public Producto buscarProducto(String nombre) {
-        for (Producto p : productos) {
-            if (p.getNombre().equalsIgnoreCase(nombre)) {
-                return p;
+    private ComponenteInventario buscarRec(ComponenteInventario actual, String nombre) {
+        if (actual.getNombre().equalsIgnoreCase(nombre)) return actual;
+        if (actual instanceof Categoria) {
+            for (ComponenteInventario hijo : ((Categoria) actual).getHijos()) {
+                ComponenteInventario res = buscarRec(hijo, nombre);
+                if (res != null) return res;
             }
         }
         return null;
     }
 
-    /**
-     * Retira cantidad de un producto, previniendo negativo.
-     * @param nombre Nombre del producto.
-     * @param cantidad Cantidad a retirar.
-     */
-    public void retirarProducto(String nombre, int cantidad) {
-        Producto p = buscarProducto(nombre);
-        if (p != null) {
-            int nuevaCantidad = p.getCantidad() - cantidad;
-            p.setCantidad(Math.max(nuevaCantidad, 0));
-        }
-    }
-
-    /**
-     * Agrega una categoría al registro.
-     * @param categoria Categoría a agregar.
-     */
-    public void agregarCategoria(Categoria categoria) {
-        if (buscarCategoria(categoria.getNombre()) == null) {
-            categorias.add(categoria);
-        } else {
-            System.out.println("Categoría ya existe.");
-        }
-    }
-
-    /**
-     * Busca categoría por nombre (case-insensitive).
-     * @param nombre Nombre de la categoría.
-     * @return Categoría encontrada o null si no existe.
-     */
-    public Categoria buscarCategoria(String nombre) {
-        for (Categoria c : categorias) {
-            if (c.getNombre().equalsIgnoreCase(nombre)) {
-                return c;
-            }
-        }
-        return null;
-    }
-
-    /**
-     * Muestra el inventario completo.
-     * Cumple con Caso de Uso 3: Consultar el estado del inventario.
-     */
     public void mostrarInventario() {
-        if (productos.isEmpty()) {
-            System.out.println("El inventario está vacío.");
-        } else {
-            System.out.println("------------------------");
-            for (Producto p : productos) {
-                System.out.println(p);
-                System.out.println("------------------------");
+        if (raices.isEmpty()) {
+            System.out.println("(Inventario vacío)");
+            return;
+        }
+        for (ComponenteInventario c : raices) {
+            imprimirRec(c, 0);
+        }
+    }
+
+    private void imprimirRec(ComponenteInventario c, int nivel) {
+        String indent = "  ".repeat(nivel);
+        System.out.println(indent + "- " + c.descripcion());
+        if (c instanceof Categoria) {
+            for (ComponenteInventario h : ((Categoria) c).getHijos()) {
+                imprimirRec(h, nivel + 1);
             }
         }
     }
